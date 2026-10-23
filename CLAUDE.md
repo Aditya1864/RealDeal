@@ -72,7 +72,7 @@ lib/
   scoring.ts                     # Deterministic score/tag computation
 
 scripts/
-  seed.ts                        # 8 sample leads through real pipeline
+  seed.ts                        # 6 sample leads through real pipeline (npm run db:seed)
 
 drizzle.config.ts
 .env.local                       # GROQ_API_KEY, GEMINI_API_KEY, DATABASE_URL
@@ -310,10 +310,22 @@ Where the implementation differs from the list above:
 ---
 
 ## Seed data
-8 sample leads in `scripts/seed.ts`, deliberately varied — a few clearly
-Hot, a few clearly Cold, a couple genuinely ambiguous/Warm. Each is run
-through the REAL analysis pipeline (not faked scores), so the live URL
+6 sample leads in `scripts/seed.ts`, deliberately varied — two meant to be
+clearly Hot, two genuinely ambiguous/Warm, two meant to be clearly Cold. Each
+is run through the REAL analysis pipeline (not faked scores), so the live URL
 never looks empty and genuinely demonstrates the AI working end-to-end.
+
+Run it with `npm run db:seed` (loads `.env.local`, makes real AI calls, one
+per lead). It is safe to re-run: a lead whose name and location already exist
+is skipped.
+
+Actual results from the first run: Ananya Reddy 94 Hot, Vikram Singh 85 Hot,
+Deepa Nair 75 Hot, Meera Iyer 73 Warm, Farhan Qureshi 58 Warm, Rahul Bose 26
+Cold. Deepa was written as the "unrealistic budget" cold case (4 BHK sea-facing
+villa with a pool for 40 lakhs, wanted next month) but scored exactly 75: the
+model rated her budget fit 2 yet gave timeline and location 10 and requirement
+fit 9 ("specific"), so the fixed weights still reached Hot. This is a known
+weakness of the heuristic scoring, left as is.
 
 ---
 
