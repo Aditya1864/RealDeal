@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Check, Copy, Lightbulb, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ChatPanel } from "@/components/chat-panel";
 import { FactorBar } from "@/components/factor-bar";
 import { ScoreRing } from "@/components/score-ring";
 import { missingAnalysisLabel } from "@/lib/analysis-status";
@@ -68,32 +70,53 @@ export function LeadDetailContent({ lead }: { lead: LeadWithAnalysis }) {
   return (
     <div className="space-y-6">
       <h2 className="pr-10 text-2xl font-serif font-bold">{lead.name}</h2>
-      {!current ? (
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      ) : !current.lead ? (
-        <p className="text-sm text-muted-foreground">
-          Couldn’t load lead details.
-        </p>
-      ) : (
-        <>
-          {current.lead.analysis ? (
-            <AnalysisSections analysis={current.lead.analysis} />
+      <Tabs defaultValue="details" className="gap-4">
+        <TabsList>
+          <TabsTrigger value="details">Details</TabsTrigger>
+          <TabsTrigger value="chat">Chat</TabsTrigger>
+        </TabsList>
+        {/* forceMount keeps the chat (and any answer still streaming) alive
+            while you look at the details tab. */}
+        <TabsContent
+          value="details"
+          forceMount
+          className="space-y-6 data-[state=inactive]:hidden"
+        >
+          {!current ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : !current.lead ? (
+            <p className="text-sm text-muted-foreground">
+              Couldn’t load lead details.
+            </p>
           ) : (
-            <MissingAnalysis
-              leadId={leadId}
-              createdAt={current.lead.createdAt}
-              onRetried={refresh}
-            />
+            <>
+              {current.lead.analysis ? (
+                <AnalysisSections analysis={current.lead.analysis} />
+              ) : (
+                <MissingAnalysis
+                  leadId={leadId}
+                  createdAt={current.lead.createdAt}
+                  onRetried={refresh}
+                />
+              )}
+              <CallOutcomes
+                key={leadId} // so a nudge never carries over to another lead
+                leadId={leadId}
+                stage={current.lead.stage}
+                outcomes={current.lead.callOutcomes}
+                onLogged={refresh}
+              />
+            </>
           )}
-          <CallOutcomes
-            key={leadId} // so a nudge never carries over to another lead
-            leadId={leadId}
-            stage={current.lead.stage}
-            outcomes={current.lead.callOutcomes}
-            onLogged={refresh}
-          />
-        </>
-      )}
+        </TabsContent>
+        <TabsContent
+          value="chat"
+          forceMount
+          className="data-[state=inactive]:hidden"
+        >
+          <ChatPanel leadId={leadId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
