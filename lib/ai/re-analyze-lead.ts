@@ -60,9 +60,10 @@ export async function reAnalyzeLead(
   history: CallHistoryEntry[],
 ): Promise<Analysis> {
   const prompt = buildPrompt(lead, history);
-  return withFallback(async (model) => {
+  return withFallback(async (model, abortSignal) => {
     const { object } = await generateObject({
       model,
+      abortSignal,
       schema: analysisSchema,
       system: buildSystemPrompt("re_analysis"),
       prompt,

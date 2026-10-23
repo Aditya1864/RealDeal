@@ -6,7 +6,10 @@ const groq = createGroq({ apiKey: process.env.GROQ_API_KEY });
 const google = createGoogleGenerativeAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const groqModel: LanguageModel = groq("openai/gpt-oss-120b");
-const geminiModel: LanguageModel = google("gemini-3.8-flash");
+// Lead analysis backup. gemini-3.8-flash and gemini-3.6-flash were both
+// overloaded (HTTP 503 "high demand", or no response at all) when tested;
+// gemini-3.1-flash-lite answered 5 of 5 in about 2.4s with valid output.
+const geminiModel: LanguageModel = google("gemini-3.1-flash-lite");
 
 // Lead analysis (withFallback): Groq first, Gemini as the backup.
 export const primaryModel = groqModel;
@@ -16,20 +19,26 @@ export const fallbackModel = geminiModel;
 // stalling when chat was built, while gemini-3.6-flash answered promptly.
 const chatBackupModel: LanguageModel = google("gemini-3.6-flash");
 
+// Each attempt (including the SDK's own retries) must finish within this, so
+// a provider that stalls without erroring can't leave a lead stuck on
+// "Analyzing…".
+const ATTEMPT_TIMEOUT_MS = 30_000;
+
 /**
  * Runs `run` against Groq first; if it throws (rate limit, provider error,
- * unparseable output), runs it again against Gemini. Only if both fail does
- * an error surface, carrying both causes.
+ * unparseable output, or no answer within the timeout), runs it again against
+ * Gemini. Only if both fail does an error surface, carrying both causes.
+ * `run` must pass the given `abortSignal` on to the model call.
  */
 export async function withFallback<T>(
-  run: (model: LanguageModel) => Promise<T>,
+  run: (model: LanguageModel, abortSignal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   try {
-    return await run(primaryModel);
+    return await run(primaryModel, AbortSignal.timeout(ATTEMPT_TIMEOUT_MS));
   } catch (primaryError) {
     console.warn("Groq call failed, falling back to Gemini:", primaryError);
     try {
-      return await run(fallbackModel);
+      return await run(fallbackModel, AbortSignal.timeout(ATTEMPT_TIMEOUT_MS));
     } catch (fallbackError) {
       throw new Error("Both Groq and Gemini failed", {
         cause: new AggregateError([primaryError, fallbackError]),

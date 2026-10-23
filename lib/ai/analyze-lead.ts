@@ -23,9 +23,10 @@ ${wrapUntrusted("customer_message", lead.customerMessage)}`;
 /** First-pass analysis of a newly submitted lead. Returns schema-validated output. */
 export async function analyzeLead(lead: IntakeInput): Promise<Analysis> {
   const prompt = buildPrompt(lead);
-  return withFallback(async (model) => {
+  return withFallback(async (model, abortSignal) => {
     const { object } = await generateObject({
       model,
+      abortSignal,
       schema: analysisSchema,
       system: buildSystemPrompt("first_pass"),
       prompt,
