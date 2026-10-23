@@ -1,4 +1,5 @@
-import Link from "next/link";
+"use client";
+
 import { PriorityBadge } from "@/components/priority-badge";
 import type { LeadWithAnalysis } from "@/lib/db/queries";
 
@@ -12,11 +13,18 @@ function summaryText(lead: LeadWithAnalysis): string {
   return age < ANALYZING_WINDOW_MS ? "Analyzing…" : "Analysis failed";
 }
 
-export function LeadCard({ lead }: { lead: LeadWithAnalysis }) {
+export function LeadCard({
+  lead,
+  onSelect,
+}: {
+  lead: LeadWithAnalysis;
+  onSelect: (leadId: number) => void;
+}) {
   return (
-    <Link
-      href={`/leads/${lead.id}`}
-      className="block rounded-lg border bg-card p-3 text-card-foreground transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+    <button
+      type="button"
+      onClick={() => onSelect(lead.id)}
+      className="block w-full rounded-lg border bg-card p-3 text-left text-card-foreground transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
     >
       <div className="flex items-start justify-between gap-2">
         <h3 className="truncate text-sm font-medium">{lead.name}</h3>
@@ -36,6 +44,6 @@ export function LeadCard({ lead }: { lead: LeadWithAnalysis }) {
       >
         {summaryText(lead)}
       </p>
-    </Link>
+    </button>
   );
 }
