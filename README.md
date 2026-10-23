@@ -10,6 +10,8 @@ conversation.
 
 Built with Next.js, deployed on Vercel, using free-tier services only.
 
+LIVE URL: https://realdeal-rho.vercel.app/
+
 **Contents:**
 [What I built](#1-what-i-built) ·
 [Architecture overview](#2-architecture-overview) ·
