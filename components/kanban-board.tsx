@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LeadCard } from "@/components/lead-card";
 import { LeadDetailContent } from "@/components/lead-detail-content";
+import { missingAnalysisLabel } from "@/lib/analysis-status";
 import { cn } from "@/lib/utils";
 import type { LeadWithAnalysis } from "@/lib/db/queries";
 
@@ -21,11 +23,34 @@ function byScoreDesc(a: LeadWithAnalysis, b: LeadWithAnalysis) {
 export function KanbanBoard({
   leads,
   header,
+  initialLeadId = null,
 }: {
   leads: LeadWithAnalysis[];
   header?: ReactNode;
+  /** Lead to open on first render (from the `?open=` search param). */
+  initialLeadId?: number | null;
 }) {
-  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(null);
+  const router = useRouter();
+  const [selectedLeadId, setSelectedLeadId] = useState<number | null>(
+    initialLeadId,
+  );
+
+  // Analysis runs after a lead is created; refresh until it has landed.
+  const hasAnalyzing = leads.some(
+    (lead) =>
+      !lead.analysis && missingAnalysisLabel(lead.createdAt) === "Analyzing…",
+  );
+  useEffect(() => {
+    if (!hasAnalyzing) return;
+    const timer = setInterval(() => router.refresh(), 3000);
+    return () => clearInterval(timer);
+  }, [hasAnalyzing, router]);
+
+  // Drop ?open= from the URL so a refresh doesn't reopen the panel.
+  useEffect(() => {
+    if (initialLeadId !== null) router.replace("/", { scroll: false });
+  }, [initialLeadId, router]);
+
   const selectedLead = leads.find((lead) => lead.id === selectedLeadId) ?? null;
 
   // Keep showing the last selected lead while the panel animates closed.
@@ -36,10 +61,10 @@ export function KanbanBoard({
   const isOpen = selectedLead !== null;
 
   return (
-    <div className="flex">
+    <div className="flex h-full">
       <div
         className={cn(
-          "min-w-0 transition-[width] duration-300 ease-in-out",
+          "scrollbar-thin h-full min-w-0 overflow-y-auto transition-[width] duration-300 ease-in-out",
           isOpen ? "w-1/2 pr-4" : "w-full",
         )}
       >
@@ -83,21 +108,22 @@ export function KanbanBoard({
         aria-hidden={!isOpen}
         aria-label="Lead details"
         className={cn(
-          "overflow-hidden transition-[width] duration-300 ease-in-out",
+          "relative h-full overflow-hidden transition-[width] duration-300 ease-in-out",
           isOpen ? "w-1/2 border-l" : "w-0",
         )}
       >
+        {/* Stays put while the content below scrolls. */}
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Close lead details"
+          className="absolute top-0 right-4 z-10"
+          onClick={() => setSelectedLeadId(null)}
+        >
+          <X />
+        </Button>
         {/* Fixed-width inner box so content doesn't reflow while animating. */}
-        <div className="relative min-w-72 pl-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Close lead details"
-            className="absolute top-0 right-0"
-            onClick={() => setSelectedLeadId(null)}
-          >
-            <X />
-          </Button>
+        <div className="scrollbar-thin h-full min-w-72 overflow-y-auto pl-4">
           {detailLead && <LeadDetailContent lead={detailLead} />}
         </div>
       </aside>

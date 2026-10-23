@@ -18,14 +18,28 @@ function PageHeader() {
 // Same data as GET /api/leads, read directly on the server.
 // The header is rendered inside the board's left pane so it moves with the
 // board when the detail panel opens.
-async function Board() {
-  const leads = await getLeadsWithLatestAnalysis();
-  return <KanbanBoard leads={leads} header={<PageHeader />} />;
+async function Board({
+  searchParams,
+}: {
+  searchParams: PageProps<"/">["searchParams"];
+}) {
+  const [leads, { open }] = await Promise.all([
+    getLeadsWithLatestAnalysis(),
+    searchParams,
+  ]);
+  const openId = Number(typeof open === "string" ? open : NaN);
+  return (
+    <KanbanBoard
+      leads={leads}
+      header={<PageHeader />}
+      initialLeadId={Number.isInteger(openId) && openId > 0 ? openId : null}
+    />
+  );
 }
 
-export default function Home() {
+export default function Home(props: PageProps<"/">) {
   return (
-    <main className="w-full px-6 py-8 lg:px-8">
+    <main className="h-dvh w-full overflow-hidden px-6 py-8 lg:px-8">
       <Suspense
         fallback={
           <>
@@ -34,7 +48,7 @@ export default function Home() {
           </>
         }
       >
-        <Board />
+        <Board searchParams={props.searchParams} />
       </Suspense>
     </main>
   );
