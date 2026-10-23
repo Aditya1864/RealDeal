@@ -86,7 +86,9 @@ export function LeadDetailContent({ lead }: { lead: LeadWithAnalysis }) {
             />
           )}
           <CallOutcomes
+            key={leadId} // so a nudge never carries over to another lead
             leadId={leadId}
+            stage={current.lead.stage}
             outcomes={current.lead.callOutcomes}
             onLogged={refresh}
           />
@@ -166,22 +168,106 @@ function formatDateTime(iso: string): string {
   });
 }
 
+// Throws with a user-facing message if the stage could not be changed.
+async function changeStage(leadId: number, stage: "new" | "qualified") {
+  const res = await fetch(`/api/leads/${leadId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error ?? "Could not move the lead.");
+  }
+}
+
+const NUDGES = {
+  qualify: {
+    stage: "qualified",
+    label: "Move to Qualified",
+    hint: "Is this a qualified lead?",
+  },
+  demote: {
+    stage: "new",
+    label: "Move back to New — re-score dropped below 70.",
+    hint: null,
+  },
+  // Always offered for a qualified lead, whatever its score.
+  demoteManual: {
+    stage: "new",
+    label: "Move back to New",
+    hint: null,
+  },
+} as const;
+
+// A suggestion shown right after a call outcome crosses the 70-point
+// threshold. Nothing moves until the salesperson clicks.
+function StageNudge({
+  leadId,
+  kind,
+  onMoved,
+}: {
+  leadId: number;
+  kind: keyof typeof NUDGES;
+  onMoved: () => void;
+}) {
+  const nudge = NUDGES[kind];
+  const [moving, setMoving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function move() {
+    setMoving(true);
+    setError(null);
+    try {
+      await changeStage(leadId, nudge.stage);
+      onMoved();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not move the lead.");
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-2 rounded-lg border border-violet-200 bg-violet-50 p-3 text-violet-900 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-100">
+      {nudge.hint && <p className="text-sm">{nudge.hint}</p>}
+      <Button size="sm" onClick={move} disabled={moving}>
+        {moving ? "Moving…" : nudge.label}
+      </Button>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function CallOutcomes({
   leadId,
+  stage,
   outcomes,
   onLogged,
 }: {
   leadId: number;
+  stage: "new" | "qualified";
   outcomes: CallOutcome[];
   onLogged: () => void;
 }) {
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set only by a successful outcome submission, never by loading the panel.
+  const [nudge, setNudge] = useState<"qualify" | "demote" | null>(null);
+
+  // A qualified lead can always be moved back; otherwise only a nudge from a
+  // just-logged call shows a button.
+  const stageAction = nudge ?? (stage === "qualified" ? "demoteManual" : null);
 
   async function submit() {
     setSubmitting(true);
     setError(null);
+    setNudge(null);
     try {
       const res = await fetch(`/api/leads/${leadId}/outcome`, {
         method: "POST",
@@ -190,12 +276,16 @@ function CallOutcomes({
       });
       // A 502 means the call was saved but re-analysis failed, so the
       // timeline still changed.
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        if (data?.canQualify) setNudge("qualify");
+        else if (data?.canDemote) setNudge("demote");
+      }
       if (res.ok || res.status === 502) {
         setNotes("");
         onLogged();
       }
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
         setError(data?.error ?? "Could not log the call outcome.");
       }
     } catch {
@@ -231,9 +321,21 @@ function CallOutcomes({
         )}
       </div>
 
+      {stageAction && (
+        <StageNudge
+          leadId={leadId}
+          kind={stageAction}
+          onMoved={() => {
+            setNudge(null);
+            onLogged();
+          }}
+        />
+      )}
+
       {outcomes.length > 0 && (
         <ol className="space-y-4 border-l pl-4">
-          {outcomes.map((outcome) => (
+          {/* The API returns oldest first; show the latest call on top. */}
+          {[...outcomes].reverse().map((outcome) => (
             <li key={outcome.id} className="relative">
               <span
                 aria-hidden
