@@ -18,8 +18,8 @@ outcome re-triggers analysis and can move a lead between columns.
 - **AI SDK**: Vercel AI SDK (`ai` package) — `generateObject` for structured
   analysis, `streamText` + `useChat` for the chat feature
 - **AI models**: Groq (`openai/gpt-oss-120b`) as primary, Gemini
-  (`gemini-3.8-flash`) as fallback if Groq fails or rate-limits. Chat is the
-  exception: its backup is `gemini-3.6-flash` (see Build notes)
+  (`gemini-3.1-flash-lite`) as fallback if Groq fails or rate-limits. Chat is
+  the exception: its backup is `gemini-3.6-flash` (see Build notes)
 - **Validation**: Zod (shared between AI output schema and form validation)
 - **Database**: Neon (serverless Postgres)
 - **ORM**: Drizzle ORM
@@ -300,8 +300,11 @@ Where the implementation differs from the list above:
   the mode itself: first-pass `analyzeLead()` if the lead has no logged calls,
   otherwise `reAnalyzeLead()` with the full call history. The outcome route uses
   the same helper.
-- **Fallback**: if Groq fails (rate limit, error), retry via Gemini before
-  surfacing an error to the user. Chat streams, so it can only switch providers
+- **Fallback**: if Groq fails (rate limit, error, or no answer within 30s),
+  retry via Gemini before surfacing an error to the user (`withFallback` in
+  `lib/ai/client.ts`, used by analysis and re-analysis; each attempt gets a
+  30s abort signal, which includes the SDK's own default 2 retries on overload
+  errors). Chat streams, so it can only switch providers
   before the first output: `streamWithFallback` (`lib/ai/client.ts`) gives Groq
   15s and then falls back to `gemini-3.6-flash` (30s). A stream that fails
   midway surfaces as an error instead.
@@ -359,11 +362,12 @@ DATABASE_URL=            # Neon pooled connection string
 - **Groq model**: use `openai/gpt-oss-120b`, NOT `llama-3.3-70b-versatile` — the
   latter is now Enterprise-only on Groq and returns a 404 on a free-tier key.
   Confirmed working via `scripts/test-analyze.ts`.
-- **Gemini model**: use `gemini-3.8-flash`, NOT `gemini-2.5-flash` — the latter is
-  deprecated for new accounts and returns a 404. NOTE: this fallback path has
-  not actually been exercised yet (Groq has always succeeded on the first try
-  in testing), so it is unverified — don't assume it works without testing it
-  directly.
+- **Gemini models are volatile**: `gemini-2.5-flash` is deprecated for new
+  accounts and returns a 404. Of the 3.x models, `gemini-3.8-flash` and
+  `gemini-3.6-flash` were both frequently overloaded (HTTP 503 "high demand" or
+  no response) when tested, so analysis uses `gemini-3.1-flash-lite` as its
+  backup (see the notes below). Re-test before changing models: availability
+  moves around.
 - **Structured output bounds**: Groq's structured output (`generateObject` via
   `response_format: json_schema`) correctly accepts and enforces
   minimum/maximum integer bounds on the scoring factor ratings — no need to
@@ -407,10 +411,20 @@ DATABASE_URL=            # Neon pooled connection string
 - **Chat's Gemini backup is `gemini-3.6-flash`, not 3.8**: when chat was built,
   `gemini-3.8-flash` was overloaded (HTTP 503 "high demand") and, through the AI
   SDK's streaming path, stalled silently with no error, which froze the chat.
-  `gemini-3.6-flash` streamed fine (first token ~4-6s). Analysis still uses
-  `gemini-3.8-flash` as its backup, so that path is still unexercised: test it
-  before relying on it. Streaming needs a first-output timeout for exactly this
-  reason, so don't remove the timeouts in `streamWithFallback`.
+  `gemini-3.6-flash` streamed fine (first token ~4-6s) at that time, but later
+  failed 5 of 5 calls with the same overload error, so chat's backup is itself
+  unreliable (`gemini-3.1-flash-lite` is the obvious candidate, but its chat
+  grounding quality hasn't been tested). Streaming needs a first-output timeout
+  for exactly this reason, so don't remove the timeouts in `streamWithFallback`.
+- **Analysis backup is `gemini-3.1-flash-lite`**: same prompt and schema, run 5
+  times against it and `gemini-3.6-flash` at the same moment: lite succeeded 5 of
+  5 (~2.4s, valid structured output, ratings close to Groq's), 3.6 succeeded 0 of
+  5. Verified end to end with a broken Groq key: first analysis and a
+  post-call re-analysis both fell back to lite and stored correctly. Scores can
+  differ by a few points from Groq's (one lead: 87 on Groq, 79 on lite). The
+  30s timeout in `withFallback` was verified with a simulated stalled provider.
+  Note `AbortSignal.timeout` timers don't keep a bare Node script alive, so a
+  standalone test script needs a dummy `setInterval` (the server is unaffected).
 - **Testing a provider outage**: start a second server with a broken key, e.g.
   `GROQ_API_KEY=invalid npx next start -p 3112`, to force the Gemini fallback end
   to end (process env overrides `.env.local`). This is how the chat fallback was
