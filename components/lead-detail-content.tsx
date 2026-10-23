@@ -8,7 +8,6 @@ import { FactorBar } from "@/components/factor-bar";
 import { ScoreRing } from "@/components/score-ring";
 import { missingAnalysisLabel } from "@/lib/analysis-status";
 import { computeScore } from "@/lib/scoring";
-import { cn } from "@/lib/utils";
 import type { LeadWithAnalysis } from "@/lib/db/queries";
 
 // What the lead looks like after crossing the JSON boundary of the API.
@@ -23,13 +22,6 @@ type LeadDetail = Jsonify<LeadWithAnalysis>;
 type Analysis = NonNullable<LeadDetail["analysis"]>;
 
 type FetchResult = { id: number; lead: LeadDetail | null };
-
-const TIMELINE_STEPS = [
-  { value: "immediate", label: "Immediate" },
-  { value: "short_term", label: "Short term" },
-  { value: "medium_term", label: "Medium term" },
-  { value: "long_term", label: "Long term" },
-] as const;
 
 export function LeadDetailContent({ lead }: { lead: LeadWithAnalysis }) {
   const leadId = lead.id;
@@ -74,22 +66,17 @@ export function LeadDetailContent({ lead }: { lead: LeadWithAnalysis }) {
         <p className="text-sm text-muted-foreground">
           Couldn’t load lead details.
         </p>
+      ) : current.lead.analysis ? (
+        <AnalysisSections analysis={current.lead.analysis} />
       ) : (
-        <>
-          {current.lead.analysis ? (
-            <AnalysisSections analysis={current.lead.analysis} />
-          ) : (
-            <MissingAnalysis
-              leadId={leadId}
-              createdAt={current.lead.createdAt}
-              onRetried={() => {
-                setRefreshKey((k) => k + 1);
-                router.refresh(); // update the board card behind the panel
-              }}
-            />
-          )}
-          <RawIntake lead={current.lead} />
-        </>
+        <MissingAnalysis
+          leadId={leadId}
+          createdAt={current.lead.createdAt}
+          onRetried={() => {
+            setRefreshKey((k) => k + 1);
+            router.refresh(); // update the board card behind the panel
+          }}
+        />
       )}
     </div>
   );
@@ -300,59 +287,5 @@ function AnalysisSections({ analysis }: { analysis: Analysis }) {
         </div>
       </section>
     </>
-  );
-}
-
-function RawIntake({ lead }: { lead: LeadDetail }) {
-  const currentIndex = TIMELINE_STEPS.findIndex(
-    (step) => step.value === lead.buyingTimeline,
-  );
-
-  return (
-    <section className="space-y-4 border-t pt-6">
-      <h3 className="text-sm font-semibold">Original inquiry</h3>
-
-      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
-        <dt className="text-muted-foreground">Location</dt>
-        <dd>{lead.location}</dd>
-        <dt className="text-muted-foreground">Budget</dt>
-        <dd>{lead.budget}</dd>
-        <dt className="text-muted-foreground">Property requirement</dt>
-        <dd>{lead.propertyRequirement}</dd>
-      </dl>
-
-      <div>
-        <p className="mb-1.5 text-sm text-muted-foreground">
-          Stated timeline
-          {currentIndex === -1 && " — unspecified"}
-        </p>
-        <ol className="grid grid-cols-4 gap-1">
-          {TIMELINE_STEPS.map((step, i) => (
-            <li key={step.value} aria-current={i === currentIndex}>
-              <div
-                className={cn(
-                  "h-1.5 rounded-full",
-                  i === currentIndex ? "bg-primary" : "bg-muted",
-                )}
-              />
-              <span
-                className={cn(
-                  "mt-1 block text-center text-xs",
-                  i === currentIndex
-                    ? "font-medium text-foreground"
-                    : "text-muted-foreground",
-                )}
-              >
-                {step.label}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </div>
-
-      <blockquote className="border-l-2 pl-3 text-sm italic text-muted-foreground">
-        “{lead.customerMessage}”
-      </blockquote>
-    </section>
   );
 }
