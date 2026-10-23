@@ -33,35 +33,75 @@ function tagFor(score: number): PriorityTag {
   return "cold";
 }
 
-function joinLabels(keys: FactorKey[]): string {
-  return keys.map((k) => LABELS[k]).join(" and ");
+// The explanation is a glanceable label, so the whole line stays under this.
+const MAX_EXPLANATION_LENGTH = 60;
+// Below this many characters an evidence excerpt says nothing useful.
+const MIN_EXCERPT_LENGTH = 8;
+
+// Shorter labels for Warm, where two factors share the line.
+const SHORT_LABELS: Record<FactorKey, string> = {
+  buyingTimeline: "timeline",
+  budgetFit: "budget",
+  locationFit: "location",
+  propertyRequirementFit: "property",
+};
+
+// First sentence-ish fragment of the evidence, cut at a word boundary to fit
+// in `max` characters (the ellipsis included).
+function excerpt(evidence: string, max: number): string {
+  const text = evidence
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.!?]+$/, "");
+  if (text.length <= max) return text;
+  const room = text.slice(0, max - 1);
+  const lastSpace = room.lastIndexOf(" ");
+  const cut = lastSpace >= MIN_EXCERPT_LENGTH ? room.slice(0, lastSpace) : room;
+  return `${cut.replace(/[\s,;:–-]+$/, "")}…`;
 }
 
-// Factors tied at the extreme rating (highest or lowest), heavier weights
-// first, capped at two so the explanation stays short.
-function extremeFactors(
+// The single factor at the extreme rating (heavier weight wins ties).
+function extremeFactor(
   factors: ScoringFactors,
   direction: "highest" | "lowest",
-): FactorKey[] {
-  const sorted = [...FACTOR_KEYS].sort((a, b) => {
+): FactorKey {
+  return [...FACTOR_KEYS].sort((a, b) => {
     const diff = factors[a].rating - factors[b].rating;
     return (direction === "highest" ? -diff : diff) || WEIGHTS[b] - WEIGHTS[a];
-  });
-  const extreme = factors[sorted[0]].rating;
-  return sorted.filter((k) => factors[k].rating === extreme).slice(0, 2);
+  })[0];
 }
 
 function explain(tag: PriorityTag, factors: ScoringFactors): string {
-  const label = tag[0].toUpperCase() + tag.slice(1);
-  if (tag === "hot") {
-    return `${label} — driven by strong ${joinLabels(extremeFactors(factors, "highest"))}`;
+  const head = `${tag[0].toUpperCase() + tag.slice(1)} — `;
+
+  if (tag === "warm") {
+    const best = extremeFactor(factors, "highest");
+    const worst = extremeFactor(factors, "lowest");
+    const keys = best === worst ? [best] : [best, worst];
+    const fixed =
+      head.length +
+      keys.reduce((n, k) => n + SHORT_LABELS[k].length + 2, 0) + // "label: "
+      (keys.length - 1) * 3; // " / "
+    const each = Math.floor((MAX_EXPLANATION_LENGTH - fixed) / keys.length);
+    if (each < MIN_EXCERPT_LENGTH) {
+      return head + keys.map((k) => SHORT_LABELS[k]).join(" / ");
+    }
+    return (
+      head +
+      keys
+        .map((k) => `${SHORT_LABELS[k]}: ${excerpt(factors[k].evidence, each)}`)
+        .join(" / ")
+    );
   }
-  if (tag === "cold") {
-    return `${label} — held back by weak ${joinLabels(extremeFactors(factors, "lowest"))}`;
+
+  // Hot: the strongest factor. Cold: the weakest.
+  const key = extremeFactor(factors, tag === "hot" ? "highest" : "lowest");
+  const prefix = `${head}${LABELS[key]}: `;
+  const room = MAX_EXPLANATION_LENGTH - prefix.length;
+  if (room < MIN_EXCERPT_LENGTH || !factors[key].evidence.trim()) {
+    return `${head}${LABELS[key]}`;
   }
-  const [best] = extremeFactors(factors, "highest");
-  const [worst] = extremeFactors(factors, "lowest");
-  return `${label} — strongest on ${LABELS[best]}, weakest on ${LABELS[worst]}`;
+  return prefix + excerpt(factors[key].evidence, room);
 }
 
 /** Deterministic BANT-inspired priority score. The AI supplies ratings only. */
