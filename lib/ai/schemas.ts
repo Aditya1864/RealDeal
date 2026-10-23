@@ -64,3 +64,10 @@ export const callOutcomeSchema = z.object({
 });
 
 export type CallOutcomeInput = z.infer<typeof callOutcomeSchema>;
+
+// Manual stage change (PATCH /api/leads/[id]).
+export const stageUpdateSchema = z.object({
+  stage: z.enum(["new", "qualified"]),
+});
+
+export type StageUpdateInput = z.infer<typeof stageUpdateSchema>;

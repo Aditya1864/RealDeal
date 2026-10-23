@@ -104,6 +104,25 @@ function explain(tag: PriorityTag, factors: ScoringFactors): string {
   return prefix + excerpt(factors[key].evidence, room);
 }
 
+/** Score at or above which a lead is worth suggesting for qualification. */
+export const QUALIFY_THRESHOLD = 70;
+
+/**
+ * Stage nudge after a call outcome is logged and the lead re-scored. Only ever
+ * a suggestion: the salesperson must act on it.
+ */
+export function stageNudge(
+  stage: "new" | "qualified",
+  score: number,
+): { canQualify?: true; canDemote?: true } {
+  if (stage === "new" && score >= QUALIFY_THRESHOLD)
+    return { canQualify: true };
+  if (stage === "qualified" && score < QUALIFY_THRESHOLD) {
+    return { canDemote: true };
+  }
+  return {};
+}
+
 /** Deterministic BANT-inspired priority score. The AI supplies ratings only. */
 export function computeScore(factors: ScoringFactors): ScoreResult {
   const raw = FACTOR_KEYS.reduce(

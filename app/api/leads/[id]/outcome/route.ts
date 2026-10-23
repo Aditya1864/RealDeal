@@ -4,6 +4,7 @@ import { callOutcomes, leads } from "@/lib/db/schema";
 import { getLeadById } from "@/lib/db/queries";
 import { callOutcomeSchema } from "@/lib/ai/schemas";
 import { analyzeAndStoreLead } from "@/lib/lead-analysis";
+import { stageNudge } from "@/lib/scoring";
 
 // Re-analysis is awaited in the request, so this bounds how long it may take.
 export const maxDuration = 60;
@@ -60,7 +61,11 @@ export async function POST(
         updatedAt: new Date(),
       })
       .where(eq(leads.id, id));
-    return Response.json(analysis, { status: 201 });
+    // Only suggests a stage change; the salesperson decides.
+    return Response.json(
+      { ...analysis, ...stageNudge(lead.stage, analysis.priorityScore) },
+      { status: 201 },
+    );
   } catch (error) {
     console.error(`Re-analysis failed for lead ${id}:`, error);
     return Response.json(
