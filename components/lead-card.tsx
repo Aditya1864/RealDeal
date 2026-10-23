@@ -1,16 +1,11 @@
 "use client";
 
 import { PriorityBadge } from "@/components/priority-badge";
+import { missingAnalysisLabel } from "@/lib/analysis-status";
 import type { LeadWithAnalysis } from "@/lib/db/queries";
 
-// Analysis runs synchronously on submit, so a lead without one that is this
-// fresh is still being analyzed; an older one means the analysis failed.
-const ANALYZING_WINDOW_MS = 2 * 60 * 1000;
-
 function summaryText(lead: LeadWithAnalysis): string {
-  if (lead.analysis) return lead.analysis.summary;
-  const age = Date.now() - lead.createdAt.getTime();
-  return age < ANALYZING_WINDOW_MS ? "Analyzing…" : "Analysis failed";
+  return lead.analysis?.summary ?? missingAnalysisLabel(lead.createdAt);
 }
 
 export function LeadCard({

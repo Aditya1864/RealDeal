@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { leads, leadAnalyses } from "@/lib/db/schema";
 
@@ -11,7 +11,9 @@ export type LeadWithAnalysis = Lead & { analysis: LeadAnalysis | null };
  * Ordered for the Kanban board: highest priorityScore first, unanalyzed
  * leads last, newest first on ties.
  */
-export async function getLeadsWithLatestAnalysis(): Promise<LeadWithAnalysis[]> {
+export async function getLeadsWithLatestAnalysis(): Promise<
+  LeadWithAnalysis[]
+> {
   const [allLeads, latestAnalyses] = await Promise.all([
     db.select().from(leads),
     db
@@ -33,4 +35,21 @@ export async function getLeadsWithLatestAnalysis(): Promise<LeadWithAnalysis[]> 
         (b.analysis?.priorityScore ?? -1) - (a.analysis?.priorityScore ?? -1) ||
         b.createdAt.getTime() - a.createdAt.getTime(),
     );
+}
+
+/** One lead with its most recent analysis (null if none), or null if no such lead. */
+export async function getLeadById(
+  id: number,
+): Promise<LeadWithAnalysis | null> {
+  const [[lead], [analysis]] = await Promise.all([
+    db.select().from(leads).where(eq(leads.id, id)),
+    db
+      .select()
+      .from(leadAnalyses)
+      .where(eq(leadAnalyses.leadId, id))
+      .orderBy(desc(leadAnalyses.createdAt), desc(leadAnalyses.id))
+      .limit(1),
+  ]);
+  if (!lead) return null;
+  return { ...lead, analysis: analysis ?? null };
 }
