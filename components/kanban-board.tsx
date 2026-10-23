@@ -16,27 +16,32 @@ import type { LeadWithAnalysis } from "@/lib/db/queries";
 const COLUMNS: {
   key: string;
   title: string;
+  dot: string;
   includes: (lead: LeadWithAnalysis) => boolean;
 }[] = [
   {
     key: "hot",
     title: "Hot",
+    dot: "bg-[#d9483b]",
     includes: (l) => l.stage === "new" && l.analysis?.priorityTag === "hot",
   },
   {
     key: "warm",
     title: "Warm",
+    dot: "bg-[#c98a1b]",
     includes: (l) => l.stage === "new" && l.analysis?.priorityTag === "warm",
   },
   {
     key: "cold",
     title: "Cold",
+    dot: "bg-[#3d6b94]",
     includes: (l) =>
       l.stage === "new" && (l.analysis?.priorityTag ?? "cold") === "cold",
   },
   {
     key: "qualified",
     title: "Qualified",
+    dot: "bg-[#1f6e4d]",
     includes: (l) => l.stage === "qualified",
   },
 ];
@@ -95,18 +100,23 @@ export function KanbanBoard({
         )}
       >
         {header}
-        <div className="grid min-w-[36rem] grid-cols-4 gap-3">
-          {COLUMNS.map(({ key, title, includes }) => {
+        <div className="grid min-w-[36rem] grid-cols-4 gap-5">
+          {COLUMNS.map(({ key, title, dot, includes }) => {
             const columnLeads = leads.filter(includes).sort(byScoreDesc);
             return (
-              <section key={key} className="rounded-xl bg-muted/40 p-2">
-                <h2 className="mb-3 flex items-center gap-2 px-1 text-sm font-semibold">
-                  {title}
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                    {columnLeads.length}
+              <section key={key}>
+                <h2 className="mb-3 flex items-center gap-2 text-sm">
+                  <span
+                    aria-hidden
+                    className={cn("size-2 shrink-0 rounded-full", dot)}
+                  />
+                  <span className="font-semibold">{title}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {columnLeads.length}{" "}
+                    {columnLeads.length === 1 ? "lead" : "leads"}
                   </span>
                 </h2>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2.5">
                   {columnLeads.length === 0 ? (
                     <p className="px-1 py-6 text-center text-sm text-muted-foreground">
                       No leads
@@ -116,6 +126,7 @@ export function KanbanBoard({
                       <LeadCard
                         key={lead.id}
                         lead={lead}
+                        selected={lead.id === selectedLead?.id}
                         onSelect={setSelectedLeadId}
                       />
                     ))

@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { KanbanBoard } from "@/components/kanban-board";
 import { getLeadsWithLatestAnalysis } from "@/lib/db/queries";
@@ -7,9 +8,15 @@ import { getLeadsWithLatestAnalysis } from "@/lib/db/queries";
 function PageHeader() {
   return (
     <header className="mb-6 flex items-center justify-between">
-      <h1 className="text-2xl font-semibold">RealDeal</h1>
-      <Button asChild>
-        <Link href="/leads/new">+ New Lead</Link>
+      <h1 className="font-serif text-2xl font-bold">RealDeal</h1>
+      <Button
+        asChild
+        className="bg-indigo-700 font-semibold text-white hover:bg-indigo-800"
+      >
+        <Link href="/leads/new">
+          <Plus />
+          New lead
+        </Link>
       </Button>
     </header>
   );
@@ -39,7 +46,7 @@ async function Board({
 
 export default function Home(props: PageProps<"/">) {
   return (
-    <main className="h-dvh w-full overflow-hidden px-6 py-8 lg:px-8">
+    <main className="h-dvh w-full overflow-hidden bg-[#f7f7f5] px-6 py-8 lg:px-8 dark:bg-background">
       <Suspense
         fallback={
           <>

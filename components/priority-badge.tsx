@@ -1,48 +1,72 @@
 import { cn } from "@/lib/utils";
 import type { PriorityTag } from "@/lib/scoring";
 
+// One palette for everything that shows a priority tag: the card's score pill
+// and left stripe, the selected-card outline, and the detail panel's score ring.
 export const TAG_STYLES: Record<
   PriorityTag,
-  { label: string; className: string; stroke: string }
+  {
+    label: string;
+    pill: string;
+    accent: string;
+    selected: string;
+    stroke: string;
+  }
 > = {
   hot: {
     label: "Hot",
-    className: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200",
-    stroke: "stroke-red-500 dark:stroke-red-400",
+    pill: "bg-[#d9483b]/10 text-[#c23b2e] dark:text-[#f0786c]",
+    accent: "border-l-[#d9483b]",
+    selected: "ring-1 ring-[#d9483b]",
+    stroke: "stroke-[#d9483b] dark:stroke-[#f0786c]",
   },
   warm: {
     label: "Warm",
-    className:
-      "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200",
-    stroke: "stroke-amber-500 dark:stroke-amber-400",
+    pill: "bg-[#c98a1b]/10 text-[#a8710f] dark:text-[#e0a84a]",
+    accent: "border-l-[#c98a1b]",
+    selected: "ring-1 ring-[#c98a1b]",
+    stroke: "stroke-[#c98a1b] dark:stroke-[#e0a84a]",
   },
   cold: {
     label: "Cold",
-    className: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200",
-    stroke: "stroke-sky-500 dark:stroke-sky-400",
+    pill: "bg-[#3d6b94]/10 text-[#3d6b94] dark:text-[#7fa6c9]",
+    accent: "border-l-[#3d6b94]",
+    selected: "ring-1 ring-[#3d6b94]",
+    stroke: "stroke-[#3d6b94] dark:stroke-[#7fa6c9]",
   },
 };
 
+// Qualified leads are green on the board, whatever their priority tag.
+export const QUALIFIED_STYLE = {
+  pill: "bg-[#1f6e4d]/10 text-[#1f6e4d] dark:text-[#5fb88f]",
+  accent: "border-l-[#1f6e4d]",
+  selected: "ring-1 ring-[#1f6e4d]",
+};
+
+/** Small tinted pill with the score; the tag shows through its colour. */
 export function PriorityBadge({
   score,
   tag,
+  qualified = false,
   className,
 }: {
   score: number;
   tag: PriorityTag;
+  qualified?: boolean;
   className?: string;
 }) {
   const style = TAG_STYLES[tag];
   return (
     <span
+      title={style.label}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium",
-        style.className,
+        "inline-flex shrink-0 items-center rounded-md px-1.5 py-0.5 text-xs font-semibold tabular-nums",
+        qualified ? QUALIFIED_STYLE.pill : style.pill,
         className,
       )}
     >
-      <span className="font-semibold tabular-nums">{score}</span>
-      {style.label}
+      <span className="sr-only">{style.label}, score </span>
+      {score}
     </span>
   );
 }
