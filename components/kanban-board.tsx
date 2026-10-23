@@ -10,9 +10,35 @@ import { missingAnalysisLabel } from "@/lib/analysis-status";
 import { cn } from "@/lib/utils";
 import type { LeadWithAnalysis } from "@/lib/db/queries";
 
-const COLUMNS: { stage: LeadWithAnalysis["stage"]; title: string }[] = [
-  { stage: "new", title: "New Leads" },
-  { stage: "qualified", title: "Qualified" },
+// Hot / Warm / Cold hold leads that are still in the "new" stage, split by
+// priority tag. Qualified holds every qualified lead, whatever its tag. A new
+// lead with no analysis yet has no tag, so it waits at the bottom of Cold.
+const COLUMNS: {
+  key: string;
+  title: string;
+  includes: (lead: LeadWithAnalysis) => boolean;
+}[] = [
+  {
+    key: "hot",
+    title: "Hot",
+    includes: (l) => l.stage === "new" && l.analysis?.priorityTag === "hot",
+  },
+  {
+    key: "warm",
+    title: "Warm",
+    includes: (l) => l.stage === "new" && l.analysis?.priorityTag === "warm",
+  },
+  {
+    key: "cold",
+    title: "Cold",
+    includes: (l) =>
+      l.stage === "new" && (l.analysis?.priorityTag ?? "cold") === "cold",
+  },
+  {
+    key: "qualified",
+    title: "Qualified",
+    includes: (l) => l.stage === "qualified",
+  },
 ];
 
 // Highest priorityScore first; unanalyzed leads last.
@@ -69,13 +95,11 @@ export function KanbanBoard({
         )}
       >
         {header}
-        <div className="grid grid-cols-2 gap-4">
-          {COLUMNS.map(({ stage, title }) => {
-            const columnLeads = leads
-              .filter((lead) => lead.stage === stage)
-              .sort(byScoreDesc);
+        <div className="grid min-w-[36rem] grid-cols-4 gap-3">
+          {COLUMNS.map(({ key, title, includes }) => {
+            const columnLeads = leads.filter(includes).sort(byScoreDesc);
             return (
-              <section key={stage} className="rounded-xl bg-muted/40 p-3">
+              <section key={key} className="rounded-xl bg-muted/40 p-2">
                 <h2 className="mb-3 flex items-center gap-2 px-1 text-sm font-semibold">
                   {title}
                   <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">

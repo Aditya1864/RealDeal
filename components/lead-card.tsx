@@ -4,10 +4,6 @@ import { PriorityBadge } from "@/components/priority-badge";
 import { missingAnalysisLabel } from "@/lib/analysis-status";
 import type { LeadWithAnalysis } from "@/lib/db/queries";
 
-function summaryText(lead: LeadWithAnalysis): string {
-  return lead.analysis?.summary ?? missingAnalysisLabel(lead.createdAt);
-}
-
 export function LeadCard({
   lead,
   onSelect,
@@ -21,24 +17,22 @@ export function LeadCard({
       onClick={() => onSelect(lead.id)}
       className="block w-full rounded-lg border bg-card p-3 text-left text-card-foreground transition-colors hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
     >
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="truncate text-sm font-medium">{lead.name}</h3>
-        {lead.analysis && (
+      <h3 className="truncate text-sm font-medium">{lead.name}</h3>
+      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+        {lead.location}
+      </p>
+      <div className="mt-2">
+        {lead.analysis ? (
           <PriorityBadge
             score={lead.analysis.priorityScore}
             tag={lead.analysis.priorityTag}
           />
+        ) : (
+          <p className="text-xs italic text-muted-foreground">
+            {missingAnalysisLabel(lead.createdAt)}
+          </p>
         )}
       </div>
-      <p
-        className={
-          lead.analysis
-            ? "mt-1.5 line-clamp-1 text-sm text-muted-foreground"
-            : "mt-1.5 line-clamp-1 text-sm italic text-muted-foreground"
-        }
-      >
-        {summaryText(lead)}
-      </p>
     </button>
   );
 }
