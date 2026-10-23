@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Controller, useForm, type FieldErrors, type Resolver } from "react-hook-form";
+import {
+  Controller,
+  useForm,
+  type FieldErrors,
+  type Resolver,
+} from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,7 +26,10 @@ import {
 } from "@/components/ui/field";
 import { intakeSchema, type IntakeInput } from "@/lib/ai/schemas";
 
-const TIMELINE_OPTIONS: { value: IntakeInput["buyingTimeline"]; label: string }[] = [
+const TIMELINE_OPTIONS: {
+  value: IntakeInput["buyingTimeline"];
+  label: string;
+}[] = [
   { value: "immediate", label: "Immediate" },
   { value: "short_term", label: "Short term" },
   { value: "medium_term", label: "Medium term" },
@@ -52,6 +60,7 @@ export function LeadForm() {
     register,
     control,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<IntakeInput>({
     resolver,
@@ -78,7 +87,8 @@ export function LeadForm() {
         setSubmitError(data.error ?? "Something went wrong");
         return;
       }
-      router.push(`/leads/${data.id}`);
+      reset();
+      router.push(`/?open=${data.id}`);
     } catch {
       setSubmitError("Network error. Please try again.");
     }
@@ -104,7 +114,9 @@ export function LeadForm() {
         </Field>
 
         <Field data-invalid={!!errors.propertyRequirement}>
-          <FieldLabel htmlFor="propertyRequirement">Property requirement</FieldLabel>
+          <FieldLabel htmlFor="propertyRequirement">
+            Property requirement
+          </FieldLabel>
           <Input
             id="propertyRequirement"
             aria-invalid={!!errors.propertyRequirement}
@@ -115,7 +127,11 @@ export function LeadForm() {
 
         <Field data-invalid={!!errors.budget}>
           <FieldLabel htmlFor="budget">Budget</FieldLabel>
-          <Input id="budget" aria-invalid={!!errors.budget} {...register("budget")} />
+          <Input
+            id="budget"
+            aria-invalid={!!errors.budget}
+            {...register("budget")}
+          />
           <FieldError errors={[errors.budget]} />
         </Field>
 
@@ -126,7 +142,10 @@ export function LeadForm() {
             control={control}
             render={({ field }) => (
               <Select value={field.value} onValueChange={field.onChange}>
-                <SelectTrigger id="buyingTimeline" aria-invalid={!!errors.buyingTimeline}>
+                <SelectTrigger
+                  id="buyingTimeline"
+                  aria-invalid={!!errors.buyingTimeline}
+                >
                   <SelectValue placeholder="Select a timeline" />
                 </SelectTrigger>
                 <SelectContent>
@@ -156,7 +175,7 @@ export function LeadForm() {
         {submitError && <FieldError>{submitError}</FieldError>}
 
         <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Analyzing lead…" : "Submit lead"}
+          {isSubmitting ? "Submitting…" : "Submit lead"}
         </Button>
       </FieldGroup>
     </form>

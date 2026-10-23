@@ -1,9 +1,12 @@
+import { after } from "next/server";
 import { db } from "@/lib/db";
 import { getLeadsWithLatestAnalysis } from "@/lib/db/queries";
-import { leads, leadAnalyses } from "@/lib/db/schema";
+import { leads } from "@/lib/db/schema";
 import { intakeSchema } from "@/lib/ai/schemas";
-import { analyzeLead } from "@/lib/ai/analyze-lead";
-import { computeScore } from "@/lib/scoring";
+import { analyzeAndStoreLead } from "@/lib/lead-analysis";
+
+// Analysis runs in after(), so this bounds how long it may take.
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   let body: unknown;
@@ -24,45 +27,18 @@ export async function POST(request: Request) {
 
   const [lead] = await db.insert(leads).values(intake).returning();
 
-  try {
-    const analysis = await analyzeLead(intake);
-    const { score, tag } = computeScore(analysis.scoringFactors);
-    const { scoringFactors: f } = analysis;
+  // Respond as soon as the lead is saved; the analysis runs after the response
+  // and shows up on the board once stored. If it fails, the lead simply has no
+  // analysis (the UI shows "Analysis failed"; retry via /api/leads/[id]/analyze).
+  after(async () => {
+    try {
+      await analyzeAndStoreLead(lead);
+    } catch (error) {
+      console.error(`Analysis failed for lead ${lead.id}:`, error);
+    }
+  });
 
-    const [saved] = await db
-      .insert(leadAnalyses)
-      .values({
-        leadId: lead.id,
-        summary: analysis.summary,
-        intent: analysis.intent,
-        keyRequirements: analysis.keyRequirements,
-        objections: analysis.objections,
-        recommendedNextAction: analysis.recommendedNextAction,
-        suggestedResponse: analysis.suggestedResponse,
-        missingOrAmbiguousInfo: analysis.missingOrAmbiguousInfo,
-        buyingTimelineRating: f.buyingTimeline.rating,
-        buyingTimelineEvidence: f.buyingTimeline.evidence,
-        budgetFitRating: f.budgetFit.rating,
-        budgetFitEvidence: f.budgetFit.evidence,
-        locationFitRating: f.locationFit.rating,
-        locationFitEvidence: f.locationFit.evidence,
-        propertyRequirementFitRating: f.propertyRequirementFit.rating,
-        propertyRequirementFitEvidence: f.propertyRequirementFit.evidence,
-        priorityScore: score,
-        priorityTag: tag,
-        suggestedFollowUpDate: analysis.suggestedFollowUpDate,
-      })
-      .returning();
-
-    return Response.json({ ...lead, analysis: saved }, { status: 201 });
-  } catch (error) {
-    console.error("Lead analysis failed:", error);
-    // The lead is saved; analysis can be retried via /api/leads/[id]/analyze.
-    return Response.json(
-      { error: "Lead saved, but AI analysis failed", lead },
-      { status: 502 },
-    );
-  }
+  return Response.json({ ...lead, analysis: null }, { status: 201 });
 }
 
 export async function GET() {
