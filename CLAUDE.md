@@ -6,7 +6,7 @@ deployed on Vercel, using free-tier tools only.
 ## What this app does
 Salespeople submit real-estate lead inquiries. An LLM analyzes each one,
 extracts structured insight, and a deterministic scoring function ranks
-leads by priority. A Kanban board (New Leads / Qualified) tracks workflow
+leads by priority. A Kanban board (Hot / Warm / Cold / Qualified) tracks workflow
 state. A grounded per-lead chat helps the salesperson prep. Logging a call
 outcome re-triggers analysis and can move a lead between columns.
 
@@ -35,7 +35,7 @@ client.
 ```
 app/
   layout.tsx
-  page.tsx                      # Kanban board (New Leads / Qualified)
+  page.tsx                      # Kanban board (Hot / Warm / Cold / Qualified)
   leads/
     new/page.tsx                # Intake form
     [id]/page.tsx                # Lead detail: analysis, chat, call log
@@ -51,10 +51,10 @@ app/
 components/
   ui/                           # shadcn primitives
   lead-form.tsx
-  lead-card.tsx                 # Kanban card: name, score badge, snippet
+  lead-card.tsx                 # Kanban card: name, location, score/tag badge
   lead-detail.tsx
   priority-badge.tsx            # Hot/Warm/Cold
-  kanban-board.tsx              # New Leads / Qualified columns
+  kanban-board.tsx              # Hot / Warm / Cold / Qualified columns
   chat-panel.tsx
   follow-up-panel.tsx           # Call outcome log + history
 
@@ -163,26 +163,41 @@ number directly — code owns the math, AI only supplies ratings + evidence.
 
 ---
 
-## Kanban board: New Leads / Qualified
+## Kanban board: Hot / Warm / Cold / Qualified
 
-- Two columns only. Button-based moves — **no drag-and-drop** (out of scope
-  for time budget).
-- Every card shows its `priorityScore`/`priorityTag` regardless of column —
-  stage (workflow state) and priority (AI assessment) are independent
-  signals, both visible.
-- **Qualify/demote is never automatic.** A nudge button only appears when:
+- Four columns. Hot, Warm and Cold hold leads whose `stage` is `new`, split by
+  `priorityTag` (a score-derived tag, not something the salesperson sets).
+  Qualified holds every lead whose `stage` is `qualified`, whatever its tag; a
+  lead moved back to New reappears in the column matching its current tag.
+  Moves are button-based. Columns are sorted by `priorityScore` descending.
+- A new lead with no analysis yet has no tag, so it sits at the bottom of Cold
+  showing "Analyzing…" / "Analysis failed" until its analysis lands.
+- Every card shows name, location and its `priorityScore`/`priorityTag` badge.
+  Stage (workflow state) and priority (AI assessment) are independent signals,
+  both visible. Clicking a card opens a detail panel beside the board (the
+  board stays visible and usable).
+- **Qualifying is never automatic.** The "Move to Qualified" nudge only appears
+  when:
   1. A call outcome has just been logged for that lead, AND
   2. The resulting re-analysis crosses the 70-point threshold in the
      relevant direction
   3. Specifically:
      - Lead is "New" + re-score ≥ 70 → show **"Move to Qualified"** button
-     - Lead is "Qualified" + re-score < 70 → show **"Move back to New"** button
+     - Lead is "Qualified" + re-score < 70 → show **"Move back to New —
+       re-score dropped below 70."** button
   4. The salesperson must click the button — the system never moves a card
      on its own. This is a deliberate trust/safeguard decision: worth
      stating explicitly in the README and demo.
 - A lead's FIRST analysis (from intake, before any call) never triggers a
   qualify nudge, even if the score is high — qualification requires at
   least one logged call.
+- **Demoting is always available**: any qualified lead shows a plain "Move back
+  to New" button (same spot as the nudge, under the call-notes form), whatever
+  its score. Both buttons call `PATCH /api/leads/[id]`, which has no score
+  check; the 70 threshold only decides when the nudge is suggested
+  (`stageNudge()` in `lib/scoring.ts`). There is no manual "Move to Qualified"
+  for arbitrary new leads. The nudge lives only in component state set by a
+  successful outcome submission, so it never appears on page load.
 
 ---
 
@@ -205,9 +220,9 @@ Re-analysis prompt must include full call history in chronological order,
 not just the latest note — the AI needs to see the full trajectory of the
 conversation to assess accurately.
 
-**Status**: steps 1–4 are built except the qualify/demote nudge, which is the
-next step. The "Log Call Outcome" form and call timeline live in
-`components/lead-detail-content.tsx` (there is no separate `follow-up-panel.tsx`).
+**Status**: steps 1–4 are built, including the qualify/demote nudge (the
+outcome response carries `canQualify` / `canDemote`). The "Log Call Outcome"
+form and call timeline live in `components/lead-detail-content.tsx` (there is no separate `follow-up-panel.tsx`).
 Where the implementation differs from the list above:
 - `leads.lastContactedAt` is set as soon as the note is saved, before the AI
   call, since the call happened whether or not re-analysis succeeds.
@@ -287,7 +302,6 @@ DATABASE_URL=            # Neon pooled connection string
   production-scale pattern); failures only show as "Analysis failed"
 - Scoring weights are heuristic, not learned from real conversion data
 - Free-tier AI rate limits apply
-- No drag-and-drop on the Kanban board (button-based moves only)
 
 ---
 
