@@ -39,7 +39,10 @@ export const buyingTimelineValues = [
 export const intakeSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
   location: z.string().trim().min(1, "Location is required"),
-  propertyRequirement: z.string().trim().min(1, "Property requirement is required"),
+  propertyRequirement: z
+    .string()
+    .trim()
+    .min(1, "Property requirement is required"),
   budget: z.string().trim().min(1, "Budget is required"),
   buyingTimeline: z.enum(buyingTimelineValues),
   customerMessage: z.string().trim().min(1, "Customer message is required"),
@@ -54,3 +57,10 @@ export const chatMessageSchema = z.object({
 });
 
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
+
+// Post-call outcome log (POST /api/leads/[id]/outcome).
+export const callOutcomeSchema = z.object({
+  notes: z.string().trim().min(1, "Notes are required"),
+});
+
+export type CallOutcomeInput = z.infer<typeof callOutcomeSchema>;

@@ -1,10 +1,14 @@
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { leads, leadAnalyses } from "@/lib/db/schema";
+import { callOutcomes, leads, leadAnalyses } from "@/lib/db/schema";
 
 export type Lead = typeof leads.$inferSelect;
 export type LeadAnalysis = typeof leadAnalyses.$inferSelect;
+export type CallOutcome = typeof callOutcomes.$inferSelect;
 export type LeadWithAnalysis = Lead & { analysis: LeadAnalysis | null };
+export type LeadWithDetails = LeadWithAnalysis & {
+  callOutcomes: CallOutcome[];
+};
 
 /**
  * All leads, each joined with its most recent analysis (null if none).
@@ -37,11 +41,21 @@ export async function getLeadsWithLatestAnalysis(): Promise<
     );
 }
 
-/** One lead with its most recent analysis (null if none), or null if no such lead. */
-export async function getLeadById(
-  id: number,
-): Promise<LeadWithAnalysis | null> {
-  const [[lead], [analysis]] = await Promise.all([
+/** A lead's call outcomes, oldest first. */
+export async function getCallOutcomes(leadId: number): Promise<CallOutcome[]> {
+  return db
+    .select()
+    .from(callOutcomes)
+    .where(eq(callOutcomes.leadId, leadId))
+    .orderBy(asc(callOutcomes.createdAt), asc(callOutcomes.id));
+}
+
+/**
+ * One lead with its most recent analysis (null if none) and its call
+ * outcomes (oldest first), or null if no such lead.
+ */
+export async function getLeadById(id: number): Promise<LeadWithDetails | null> {
+  const [[lead], [analysis], outcomes] = await Promise.all([
     db.select().from(leads).where(eq(leads.id, id)),
     db
       .select()
@@ -49,7 +63,8 @@ export async function getLeadById(
       .where(eq(leadAnalyses.leadId, id))
       .orderBy(desc(leadAnalyses.createdAt), desc(leadAnalyses.id))
       .limit(1),
+    getCallOutcomes(id),
   ]);
   if (!lead) return null;
-  return { ...lead, analysis: analysis ?? null };
+  return { ...lead, analysis: analysis ?? null, callOutcomes: outcomes };
 }
