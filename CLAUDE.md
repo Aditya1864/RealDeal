@@ -18,7 +18,8 @@ outcome re-triggers analysis and can move a lead between columns.
 - **AI SDK**: Vercel AI SDK (`ai` package) — `generateObject` for structured
   analysis, `streamText` + `useChat` for the chat feature
 - **AI models**: Groq (`openai/gpt-oss-120b`) as primary, Gemini
-  (`gemini-3.8-flash`) as fallback if Groq fails or rate-limits
+  (`gemini-3.8-flash`) as fallback if Groq fails or rate-limits. Chat is the
+  exception: its backup is `gemini-3.6-flash` (see Build notes)
 - **Validation**: Zod (shared between AI output schema and form validation)
 - **Database**: Neon (serverless Postgres)
 - **ORM**: Drizzle ORM
@@ -46,7 +47,7 @@ app/
         route.ts                # GET single, PATCH (stage changes)
         analyze/route.ts        # POST → first-pass AI analysis
         outcome/route.ts        # POST → log call, re-analyze, re-score
-    chat/[id]/route.ts          # POST → grounded streaming chat
+    chat/[id]/route.ts          # GET saved history, POST → grounded streaming chat
 
 components/
   ui/                           # shadcn primitives
@@ -254,6 +255,32 @@ Where the implementation differs from the list above:
   3. "Help me handle their objection"
   4. "Summarize this lead for my manager"
 
+**Status: built.** How it works, and where it goes beyond the list above:
+- UI: a "Chat" tab next to "Details" in the lead detail panel
+  (`components/chat-panel.tsx`, `useChat` from `@ai-sdk/react`). Both tabs stay
+  mounted so a streaming answer survives switching tabs.
+- `POST /api/chat/[id]` takes only the new user message from the client. The
+  history (last 20 messages) comes from the database, so the client can't
+  rewrite it. The question and answer are saved together once an answer
+  completes (so history never holds a question without a reply). `GET`
+  returns the saved messages for the panel to load.
+- The prompt (`buildChatSystemPrompt` in `lib/ai/chat.ts`) is strict about
+  grounding: use only the lead's data (intake form, customer message, call
+  history, analysis); say "that isn't in this lead's data" instead of guessing;
+  no outside knowledge about places, prices or the market; drafts use bracketed
+  placeholders for unknowns and never promise things the salesperson hasn't;
+  figures and dates stay exactly as entered; the raw intake and call notes
+  outrank the AI analysis if they disagree; off-topic requests are redirected.
+  The customer message and call notes are both wrapped as untrusted data.
+  Temperature is 0.3. Reasoning output is not sent to the client.
+- Replies are rendered as Markdown (`react-markdown`) with images and links
+  disabled, since the model's output is shaped by untrusted customer text and
+  the browser would fetch an image URL on render. Messages meant to be sent to
+  the customer (email/WhatsApp drafts) are written as plain text.
+- Known limits: the model can still slip (e.g. turning a worry into a promise in
+  a draft), so drafts need review. Saved answers are fed back as history, so a
+  bad answer can influence later ones (there is no clear-chat button).
+
 ---
 
 ## AI call behavior
@@ -274,7 +301,10 @@ Where the implementation differs from the list above:
   otherwise `reAnalyzeLead()` with the full call history. The outcome route uses
   the same helper.
 - **Fallback**: if Groq fails (rate limit, error), retry via Gemini before
-  surfacing an error to the user.
+  surfacing an error to the user. Chat streams, so it can only switch providers
+  before the first output: `streamWithFallback` (`lib/ai/client.ts`) gives Groq
+  15s and then falls back to `gemini-3.6-flash` (30s). A stream that fails
+  midway surfaces as an error instead.
 - Never call AI providers from the client — always through API routes.
 
 ---
@@ -362,3 +392,23 @@ DATABASE_URL=            # Neon pooled connection string
   labels, so excerpts are tiny). It is computed in the browser from the stored
   ratings/evidence, not stored. The excerpt is the opening words of the evidence,
   truncated at a word boundary.
+- **Chat's Gemini backup is `gemini-3.6-flash`, not 3.8**: when chat was built,
+  `gemini-3.8-flash` was overloaded (HTTP 503 "high demand") and, through the AI
+  SDK's streaming path, stalled silently with no error, which froze the chat.
+  `gemini-3.6-flash` streamed fine (first token ~4-6s). Analysis still uses
+  `gemini-3.8-flash` as its backup, so that path is still unexercised: test it
+  before relying on it. Streaming needs a first-output timeout for exactly this
+  reason, so don't remove the timeouts in `streamWithFallback`.
+- **Testing a provider outage**: start a second server with a broken key, e.g.
+  `GROQ_API_KEY=invalid npx next start -p 3112`, to force the Gemini fallback end
+  to end (process env overrides `.env.local`). This is how the chat fallback was
+  verified.
+- **AI SDK v7 specifics** (differs from older docs): `streamText` exposes
+  `result.stream` (`fullStream` is deprecated); `toUIMessageStream({ stream,
+  sendReasoning })` + `createUIMessageStreamResponse({ stream })` produce the
+  response `useChat` reads; `useChat` lives in `@ai-sdk/react` and sends through
+  a `DefaultChatTransport` (here, `prepareSendMessagesRequest` sends only the new
+  text). `generateObject` still works but is marked deprecated.
+- **Windows gotcha**: don't leave a shell with its working directory inside
+  `node_modules` (e.g. while reading package docs): `npm install` then fails
+  with `EBUSY` when it tries to rename that folder.
