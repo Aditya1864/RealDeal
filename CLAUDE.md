@@ -41,7 +41,7 @@ app/
     [id]/page.tsx                # Lead detail: analysis, chat, call log
   api/
     leads/
-      route.ts                  # GET list, POST create (+ triggers analysis)
+      route.ts                  # GET list, POST create (analysis runs in after())
       [id]/
         route.ts                # GET single, PATCH (stage changes)
         analyze/route.ts        # POST → first-pass AI analysis
@@ -230,9 +230,18 @@ conversation to assess accurately.
 ---
 
 ## AI call behavior
-- **Synchronous**: lead submission waits for analysis to complete before
-  returning. Simpler for a 24-hour build; note in README as a known
-  production tradeoff (would be async/queued at scale).
+- **Background analysis on intake**: `POST /api/leads` inserts the lead and
+  responds immediately (`analysis: null`); the analysis runs in Next's `after()`
+  (via `analyzeAndStoreLead` in `lib/lead-analysis.ts`) and is stored when done.
+  The form redirects straight to `/?open={id}`, and the board and detail panel
+  poll every 3s while a lead is still analyzing. There is no queue: `after()`
+  is bounded by the route's `maxDuration` (60s), so note in README that a real
+  deployment would use a proper job queue.
+- **Analysis status in the UI**: a lead with no analysis row shows "Analyzing…"
+  if it is under 2 minutes old, otherwise "Analysis failed" (see
+  `lib/analysis-status.ts`). A failed analysis is only logged server-side; the
+  "Retry analysis" button is a disabled placeholder until the analyze route is
+  built.
 - **Fallback**: if Groq fails (rate limit, error), retry via Gemini before
   surfacing an error to the user.
 - Never call AI providers from the client — always through API routes.
@@ -258,7 +267,8 @@ DATABASE_URL=            # Neon pooled connection string
 
 ## Known limitations (be upfront about these in the README)
 - No authentication
-- Synchronous AI calls (not production-scale pattern)
+- Analysis runs via `after()` with no queue or automatic retry (not a
+  production-scale pattern); failures only show as "Analysis failed"
 - Scoring weights are heuristic, not learned from real conversion data
 - Free-tier AI rate limits apply
 - No drag-and-drop on the Kanban board (button-based moves only)
@@ -303,3 +313,7 @@ DATABASE_URL=            # Neon pooled connection string
 - **Confirmed end-to-end**: intake form → `POST /api/leads` → `analyzeLead()` →
   `computeScore()` → both DB rows inserted → visible via `GET /api/leads`.
   Tested manually via `npm run dev`.
+- **Intake is no longer synchronous**: the end-to-end flow above now returns
+  from `POST /api/leads` as soon as the lead row is saved; the analysis row
+  appears a few seconds later (verified: POST ~0.7s, analysis stored within
+  ~3s). Don't restore a blocking AI call in the request path without a reason.
