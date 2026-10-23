@@ -1,5 +1,5 @@
-import { desc } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { getLeadsWithLatestAnalysis } from "@/lib/db/queries";
 import { leads, leadAnalyses } from "@/lib/db/schema";
 import { intakeSchema } from "@/lib/ai/schemas";
 import { analyzeLead } from "@/lib/ai/analyze-lead";
@@ -66,28 +66,5 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  const [allLeads, latestAnalyses] = await Promise.all([
-    db.select().from(leads),
-    db
-      .selectDistinctOn([leadAnalyses.leadId])
-      .from(leadAnalyses)
-      .orderBy(
-        leadAnalyses.leadId,
-        desc(leadAnalyses.createdAt),
-        desc(leadAnalyses.id),
-      ),
-  ]);
-
-  const analysisByLead = new Map(latestAnalyses.map((a) => [a.leadId, a]));
-
-  // Highest priority first; unanalyzed leads last; newest first on ties.
-  const result = allLeads
-    .map((lead) => ({ ...lead, analysis: analysisByLead.get(lead.id) ?? null }))
-    .sort(
-      (a, b) =>
-        (b.analysis?.priorityScore ?? -1) - (a.analysis?.priorityScore ?? -1) ||
-        b.createdAt.getTime() - a.createdAt.getTime(),
-    );
-
-  return Response.json(result);
+  return Response.json(await getLeadsWithLatestAnalysis());
 }
