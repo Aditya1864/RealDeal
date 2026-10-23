@@ -239,9 +239,11 @@ conversation to assess accurately.
   deployment would use a proper job queue.
 - **Analysis status in the UI**: a lead with no analysis row shows "Analyzing…"
   if it is under 2 minutes old, otherwise "Analysis failed" (see
-  `lib/analysis-status.ts`). A failed analysis is only logged server-side; the
-  "Retry analysis" button is a disabled placeholder until the analyze route is
-  built.
+  `lib/analysis-status.ts`). A failed analysis is only logged server-side. The
+  "Retry analysis" button (shown only when a lead has no analysis) POSTs to
+  `/api/leads/[id]/analyze`, which awaits `analyzeAndStoreLead()` and inserts a
+  new `leadAnalyses` row; that route is meant to be reused by call-outcome
+  re-analysis.
 - **Fallback**: if Groq fails (rate limit, error), retry via Gemini before
   surfacing an error to the user.
 - Never call AI providers from the client — always through API routes.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Check, Copy, Lightbulb, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FactorBar } from "@/components/factor-bar";
@@ -34,6 +35,7 @@ export function LeadDetailContent({ lead }: { lead: LeadWithAnalysis }) {
   const leadId = lead.id;
   const [result, setResult] = useState<FetchResult | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const router = useRouter();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -77,7 +79,14 @@ export function LeadDetailContent({ lead }: { lead: LeadWithAnalysis }) {
           {current.lead.analysis ? (
             <AnalysisSections analysis={current.lead.analysis} />
           ) : (
-            <MissingAnalysis createdAt={current.lead.createdAt} />
+            <MissingAnalysis
+              leadId={leadId}
+              createdAt={current.lead.createdAt}
+              onRetried={() => {
+                setRefreshKey((k) => k + 1);
+                router.refresh(); // update the board card behind the panel
+              }}
+            />
           )}
           <RawIntake lead={current.lead} />
         </>
@@ -101,16 +110,50 @@ function Section({
   );
 }
 
-function MissingAnalysis({ createdAt }: { createdAt: string }) {
+function MissingAnalysis({
+  leadId,
+  createdAt,
+  onRetried,
+}: {
+  leadId: number;
+  createdAt: string;
+  onRetried: () => void;
+}) {
+  const [retrying, setRetrying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function retry() {
+    setRetrying(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/analyze`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? "Analysis failed");
+      }
+      onRetried();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Analysis failed");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   return (
     <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed p-4">
       <p className="text-sm italic text-muted-foreground">
         {missingAnalysisLabel(createdAt)}
       </p>
-      {/* Not wired up yet. */}
-      <Button variant="outline" size="sm" disabled>
-        Retry analysis
+      <Button variant="outline" size="sm" onClick={retry} disabled={retrying}>
+        {retrying ? "Retrying…" : "Retry analysis"}
       </Button>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
