@@ -121,7 +121,7 @@ function ChatSession({
   }
 
   return (
-    <div className="flex h-[calc(100dvh-13rem)] min-h-80 flex-col gap-3">
+    <div className="flex h-[calc(100dvh-11.5rem)] min-h-80 flex-col gap-3">
       <div className="scrollbar-thin flex-1 space-y-3 overflow-y-auto pr-1">
         {messages.length === 0 && (
           <p className="text-sm text-muted-foreground">
