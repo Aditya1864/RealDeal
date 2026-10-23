@@ -205,6 +205,18 @@ Re-analysis prompt must include full call history in chronological order,
 not just the latest note — the AI needs to see the full trajectory of the
 conversation to assess accurately.
 
+**Status**: steps 1–4 are built except the qualify/demote nudge, which is the
+next step. The "Log Call Outcome" form and call timeline live in
+`components/lead-detail-content.tsx` (there is no separate `follow-up-panel.tsx`).
+Where the implementation differs from the list above:
+- `leads.lastContactedAt` is set as soon as the note is saved, before the AI
+  call, since the call happened whether or not re-analysis succeeds.
+- `leads.nextFollowUpAt` is set from `suggestedFollowUpDate`, or cleared if the
+  model returns none.
+- If re-analysis fails, the route returns 502 ("Call saved, but re-analysis
+  failed"): the note stays in the timeline and no new analysis row is added.
+- Unlike intake, the outcome request is synchronous (awaited, no polling).
+
 ---
 
 ## Grounded chat
@@ -242,8 +254,10 @@ conversation to assess accurately.
   `lib/analysis-status.ts`). A failed analysis is only logged server-side. The
   "Retry analysis" button (shown only when a lead has no analysis) POSTs to
   `/api/leads/[id]/analyze`, which awaits `analyzeAndStoreLead()` and inserts a
-  new `leadAnalyses` row; that route is meant to be reused by call-outcome
-  re-analysis.
+  new `leadAnalyses` row. `analyzeAndStoreLead()` (`lib/lead-analysis.ts`) picks
+  the mode itself: first-pass `analyzeLead()` if the lead has no logged calls,
+  otherwise `reAnalyzeLead()` with the full call history. The outcome route uses
+  the same helper.
 - **Fallback**: if Groq fails (rate limit, error), retry via Gemini before
   surfacing an error to the user.
 - Never call AI providers from the client — always through API routes.
@@ -319,3 +333,18 @@ DATABASE_URL=            # Neon pooled connection string
   from `POST /api/leads` as soon as the lead row is saved; the analysis row
   appears a few seconds later (verified: POST ~0.7s, analysis stored within
   ~3s). Don't restore a blocking AI call in the request path without a reason.
+- **One system prompt, two modes**: `lib/ai/prompt-parts.ts` holds the shared
+  system prompt (BANT factors, locality awareness, anti-templating, injection
+  guard) via `buildSystemPrompt("first_pass" | "re_analysis")`, plus helpers that
+  wrap untrusted text in tags. `analyze-lead.ts` and `re-analyze-lead.ts` both
+  use it, with `temperature: 0.7`. Change prompt wording there, not in each file.
+- **Relative dates**: LLMs get weekday arithmetic wrong ("this Sunday" came back
+  as a Saturday when given only today's date). The re-analysis prompt therefore
+  includes a 21-day calendar table with weekdays to read dates from. Stored
+  follow-up dates are validated as `YYYY-MM-DD` (else null) before insert.
+- **Score explanation line** (`explain()` in `lib/scoring.ts`): a glanceable label
+  capped at ~60 chars, e.g. "Cold — buying timeline: Customer says they already
+  signed…". Hot names the strongest factor, Cold the weakest, Warm both (short
+  labels, so excerpts are tiny). It is computed in the browser from the stored
+  ratings/evidence, not stored. The excerpt is the opening words of the evidence,
+  truncated at a word boundary.
