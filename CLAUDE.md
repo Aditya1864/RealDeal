@@ -17,8 +17,8 @@ outcome re-triggers analysis and can move a lead between columns.
 - **Styling**: Tailwind CSS + shadcn/ui (Radix UI primitives, Nova preset)
 - **AI SDK**: Vercel AI SDK (`ai` package) — `generateObject` for structured
   analysis, `streamText` + `useChat` for the chat feature
-- **AI models**: Groq (`llama-3.3-70b-versatile`) as primary, Gemini
-  (`gemini-2.5-flash`) as fallback if Groq fails or rate-limits
+- **AI models**: Groq (`openai/gpt-oss-120b`) as primary, Gemini
+  (`gemini-3.8-flash`) as fallback if Groq fails or rate-limits
 - **Validation**: Zod (shared between AI output schema and form validation)
 - **Database**: Neon (serverless Postgres)
 - **ORM**: Drizzle ORM
@@ -270,3 +270,36 @@ DATABASE_URL=            # Neon pooled connection string
 - Keep AI prompt-building logic in `lib/ai/`, scoring logic in `lib/scoring.ts`
   — do not blend the two
 - Commit after each working feature, not in one giant commit at the end
+
+---
+
+## Build notes / discovered constraints
+- **Groq model**: use `openai/gpt-oss-120b`, NOT `llama-3.3-70b-versatile` — the
+  latter is now Enterprise-only on Groq and returns a 404 on a free-tier key.
+  Confirmed working via `scripts/test-analyze.ts`.
+- **Gemini model**: use `gemini-3.8-flash`, NOT `gemini-2.5-flash` — the latter is
+  deprecated for new accounts and returns a 404. NOTE: this fallback path has
+  not actually been exercised yet (Groq has always succeeded on the first try
+  in testing), so it is unverified — don't assume it works without testing it
+  directly.
+- **Structured output bounds**: Groq's structured output (`generateObject` via
+  `response_format: json_schema`) correctly accepts and enforces
+  minimum/maximum integer bounds on the scoring factor ratings — no need to
+  relax that schema constraint.
+- **Env loading**: neither `tsx` nor `drizzle-kit` auto-load `.env.local` the way
+  `next dev` does. Standalone scripts must be run with
+  `npx tsx --env-file=.env.local <script>`. The `db:push` npm script already
+  wraps this for Drizzle pushes — use `npm run db:push`, never a bare
+  `drizzle-kit push`.
+- **`@hookform/resolvers` could not be installed** — `ERESOLVE` conflict on
+  optional peer deps (`effect`, `@typeschema/*`). Worked around with a small
+  hand-rolled resolver in `lead-form.tsx` that calls `intakeSchema.safeParse()`
+  directly. This is an intentional, permanent workaround, not a TODO — don't try
+  to install the package again or "fix" this unless the workaround itself
+  causes a problem.
+- **shadcn's Nova preset has no `form` component** — the form uses `field` +
+  `react-hook-form` directly instead of shadcn's form wrapper. This is expected,
+  not a gap.
+- **Confirmed end-to-end**: intake form → `POST /api/leads` → `analyzeLead()` →
+  `computeScore()` → both DB rows inserted → visible via `GET /api/leads`.
+  Tested manually via `npm run dev`.
