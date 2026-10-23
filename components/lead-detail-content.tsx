@@ -4,11 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Lightbulb, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { FactorBar } from "@/components/factor-bar";
 import { ScoreRing } from "@/components/score-ring";
 import { missingAnalysisLabel } from "@/lib/analysis-status";
 import { computeScore } from "@/lib/scoring";
-import type { LeadWithAnalysis } from "@/lib/db/queries";
+import type { LeadWithAnalysis, LeadWithDetails } from "@/lib/db/queries";
 
 // What the lead looks like after crossing the JSON boundary of the API.
 type Jsonify<T> = T extends Date
@@ -18,8 +19,9 @@ type Jsonify<T> = T extends Date
     : T extends object
       ? { [K in keyof T]: Jsonify<T[K]> }
       : T;
-type LeadDetail = Jsonify<LeadWithAnalysis>;
+type LeadDetail = Jsonify<LeadWithDetails>;
 type Analysis = NonNullable<LeadDetail["analysis"]>;
+type CallOutcome = LeadDetail["callOutcomes"][number];
 
 type FetchResult = { id: number; lead: LeadDetail | null };
 
@@ -57,6 +59,12 @@ export function LeadDetailContent({ lead }: { lead: LeadWithAnalysis }) {
     return () => clearTimeout(timer);
   }, [isAnalyzing, refreshKey]);
 
+  // Refetch the panel and update the board card behind it.
+  function refresh() {
+    setRefreshKey((k) => k + 1);
+    router.refresh();
+  }
+
   return (
     <div className="space-y-6">
       <h2 className="pr-10 text-2xl font-serif font-bold">{lead.name}</h2>
@@ -66,17 +74,23 @@ export function LeadDetailContent({ lead }: { lead: LeadWithAnalysis }) {
         <p className="text-sm text-muted-foreground">
           Couldn’t load lead details.
         </p>
-      ) : current.lead.analysis ? (
-        <AnalysisSections analysis={current.lead.analysis} />
       ) : (
-        <MissingAnalysis
-          leadId={leadId}
-          createdAt={current.lead.createdAt}
-          onRetried={() => {
-            setRefreshKey((k) => k + 1);
-            router.refresh(); // update the board card behind the panel
-          }}
-        />
+        <>
+          {current.lead.analysis ? (
+            <AnalysisSections analysis={current.lead.analysis} />
+          ) : (
+            <MissingAnalysis
+              leadId={leadId}
+              createdAt={current.lead.createdAt}
+              onRetried={refresh}
+            />
+          )}
+          <CallOutcomes
+            leadId={leadId}
+            outcomes={current.lead.callOutcomes}
+            onLogged={refresh}
+          />
+        </>
       )}
     </div>
   );
@@ -142,6 +156,103 @@ function MissingAnalysis({
         </p>
       )}
     </div>
+  );
+}
+
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function CallOutcomes({
+  leadId,
+  outcomes,
+  onLogged,
+}: {
+  leadId: number;
+  outcomes: CallOutcome[];
+  onLogged: () => void;
+}) {
+  const [notes, setNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/leads/${leadId}/outcome`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes }),
+      });
+      // A 502 means the call was saved but re-analysis failed, so the
+      // timeline still changed.
+      if (res.ok || res.status === 502) {
+        setNotes("");
+        onLogged();
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setError(data?.error ?? "Could not log the call outcome.");
+      }
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <section className="space-y-4 border-t pt-6">
+      <h3 className="text-sm font-semibold">Log Call Outcome</h3>
+      <div className="space-y-2">
+        <Textarea
+          aria-label="Call notes"
+          placeholder="What happened on the call? e.g. Spoke, budget confirmed 85L, wants Sunday visit"
+          rows={4}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          disabled={submitting}
+        />
+        <Button
+          size="sm"
+          onClick={submit}
+          disabled={submitting || notes.trim() === ""}
+        >
+          {submitting ? "Logging & re-analyzing…" : "Log outcome"}
+        </Button>
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        )}
+      </div>
+
+      {outcomes.length > 0 && (
+        <ol className="space-y-4 border-l pl-4">
+          {outcomes.map((outcome) => (
+            <li key={outcome.id} className="relative">
+              <span
+                aria-hidden
+                className="absolute top-1.5 -left-[1.3rem] size-2 rounded-full bg-primary"
+              />
+              <time
+                dateTime={outcome.createdAt}
+                className="text-xs text-muted-foreground"
+              >
+                {formatDateTime(outcome.createdAt)}
+              </time>
+              <p className="mt-0.5 text-sm whitespace-pre-wrap">
+                {outcome.notes}
+              </p>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }
 
