@@ -1,10 +1,16 @@
 import { asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { callOutcomes, leads, leadAnalyses } from "@/lib/db/schema";
+import {
+  callOutcomes,
+  chatMessages,
+  leads,
+  leadAnalyses,
+} from "@/lib/db/schema";
 
 export type Lead = typeof leads.$inferSelect;
 export type LeadAnalysis = typeof leadAnalyses.$inferSelect;
 export type CallOutcome = typeof callOutcomes.$inferSelect;
+export type ChatMessage = typeof chatMessages.$inferSelect;
 export type LeadWithAnalysis = Lead & { analysis: LeadAnalysis | null };
 export type LeadWithDetails = LeadWithAnalysis & {
   callOutcomes: CallOutcome[];
@@ -67,4 +73,30 @@ export async function getLeadById(id: number): Promise<LeadWithDetails | null> {
   ]);
   if (!lead) return null;
   return { ...lead, analysis: analysis ?? null, callOutcomes: outcomes };
+}
+
+/** A lead's chat messages, oldest first. With `limit`, only the most recent ones. */
+export async function getChatMessages(
+  leadId: number,
+  limit?: number,
+): Promise<ChatMessage[]> {
+  const query = db
+    .select()
+    .from(chatMessages)
+    .where(eq(chatMessages.leadId, leadId))
+    .orderBy(desc(chatMessages.id));
+  const rows = limit ? await query.limit(limit) : await query;
+  return rows.reverse();
+}
+
+/** Stores one completed question and answer, in that order. */
+export async function saveChatExchange(
+  leadId: number,
+  userText: string,
+  assistantText: string,
+) {
+  await db.insert(chatMessages).values([
+    { leadId, role: "user", content: userText },
+    { leadId, role: "assistant", content: assistantText },
+  ]);
 }

@@ -58,6 +58,12 @@ export const chatMessageSchema = z.object({
 
 export type ChatMessageInput = z.infer<typeof chatMessageSchema>;
 
+// Body of POST /api/chat/[id]: just the new user message. The history is
+// loaded from the database, never taken from the client.
+export const chatRequestSchema = z.object({
+  text: z.string().trim().min(1, "Message is required").max(4000),
+});
+
 // Post-call outcome log (POST /api/leads/[id]/outcome).
 export const callOutcomeSchema = z.object({
   notes: z.string().trim().min(1, "Notes are required"),
