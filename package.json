@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:push": "node --env-file=.env.local node_modules/drizzle-kit/bin.cjs push"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.104",
