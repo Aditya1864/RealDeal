@@ -29,10 +29,10 @@ export function FactorBar({
         aria-valuemin={0}
         aria-valuemax={10}
         aria-valuenow={clamped}
-        className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted"
+        className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[#e4e4e2] dark:bg-white/15"
       >
         <div
-          className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+          className="h-full rounded-full bg-[#696969] dark:bg-[#a3a3a3] transition-[width] duration-500 ease-out"
           style={{ width: `${clamped * 10}%` }}
         />
       </div>
